@@ -1,0 +1,72 @@
+# Default configuration for nanopore segmentation model
+
+# Data settings
+data:
+  fast5_dir: "data/raw/fast5"
+  tsv_path: "data/raw/labels.tsv"
+  chunk_size: 4000
+  stride: 2000
+  max_workers: 8
+  normalize: true
+  filter_signal: true
+  augment: true
+  cache_size: 1000
+  train_val_test_split: [0.7, 0.15, 0.15]
+  batch_size: 32
+  num_workers: 4
+
+# Model settings
+model:
+  type: "EfficientUNet"  # Options: SegmentationModel, EfficientUNet
+  input_channels: 1
+  
+  # SegmentationModel settings
+  hidden_channels: 64
+  num_residual_blocks: 8
+  
+  # EfficientUNet settings
+  init_features: 32
+  depth: 4
+  
+  # Common settings
+  dropout: 0.1
+
+# Training settings
+training:
+  num_epochs: 100
+  learning_rate: 0.001
+  weight_decay: 0.00001
+  patience: 10
+  eval_interval: 1
+  save_best_only: true
+  early_stopping: true
+  gradient_clipping: 1.0
+  
+  # Scheduler settings
+  scheduler:
+    type: "reduce"  # Options: step, cosine, reduce
+    step_size: 10   # For StepLR
+    gamma: 0.5      # For StepLR
+    factor: 0.5     # For ReduceLROnPlateau
+    patience: 5     # For ReduceLROnPlateau
+    min_lr: 0.00001
+    
+  # Loss settings
+  loss:
+    type: "bce"  # Options: bce, focal, dice, weighted_bce
+    focal_alpha: 0.25  # For FocalLoss
+    focal_gamma: 2.0   # For FocalLoss
+    pos_weight: 5.0    # For weighted BCE
+
+# Evaluation settings
+evaluation:
+  threshold: 0.5
+  distance_tolerance: 5
+
+# Output settings
+output:
+  log_dir: "logs"
+  checkpoint_dir: "checkpoints"
+  export_onnx: true
+  onnx_output_path: "models/segmentation_model.onnx"
+  plot_dir: "plots"
