@@ -34,6 +34,29 @@ The system expects:
   read_id kmer_idx start_raw_idx end_raw_idx
   ```
 
+For efficient processing, you can preprocess data into HDF5 format:
+```bash
+python scripts/prepare_data.py --fast5_dir data/raw/fast5 --labels_path data/raw/labels.tsv --output_path data/processed/dataset.h5
+```
+
+This creates an optimized HDF5 file with preprocessed signal chunks and labels for faster training. The script offers several options:
+
+```bash
+python scripts/prepare_data.py --help
+```
+
+Key options include:
+- `--chunk_size`: Size of signal chunks (default: 4000)
+- `--chunk_stride`: Stride between chunks (default: 2000)
+- `--min_segments`: Minimum segments in a chunk to include (default: 1)
+- `--compression`: HDF5 compression type (gzip, lzf, or none, default: gzip)
+- `--max_workers`: Maximum number of worker threads (default: 8)
+
+When training, you can use the preprocessed HDF5 dataset:
+```bash
+python scripts/train.py --config configs/default.yaml --hdf5 data/processed/dataset.h5
+```
+
 ### Training a Model
 
 ```bash

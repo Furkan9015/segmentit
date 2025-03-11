@@ -2,8 +2,14 @@
 
 # Data settings
 data:
+  # Raw data paths (used when not using HDF5)
   fast5_dir: "data/raw/fast5"
   tsv_path: "data/raw/labels.tsv"
+  
+  # HDF5 settings (used when --hdf5 option is provided)
+  hdf5_path: "data/processed/dataset.h5"
+  
+  # Common settings
   chunk_size: 4000
   stride: 2000
   max_workers: 8
@@ -14,6 +20,17 @@ data:
   train_val_test_split: [0.7, 0.15, 0.15]
   batch_size: 32
   num_workers: 4
+  
+  # Augmentation parameters
+  augment_params:
+    scale_prob: 0.3
+    scale_min: 0.8
+    scale_max: 1.2
+    noise_prob: 0.3
+    noise_min: 0.01
+    noise_max: 0.1
+    shift_prob: 0.3
+    max_shift: 100
 
 # Model settings
 model:

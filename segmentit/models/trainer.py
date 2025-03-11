@@ -213,9 +213,18 @@ class Trainer:
         # Use tqdm for progress bar
         with tqdm(total=len(self.train_loader), desc='Training', leave=False) as pbar:
             for batch in self.train_loader:
+                # Handle different dataset formats (HDF5Dataset vs. regular Dataset)
+                if isinstance(batch, tuple):
+                    # HDF5Dataset returns (signal, label) tuple
+                    signals, labels = batch
+                else:
+                    # Regular dataset returns a dictionary
+                    signals = batch['signal']
+                    labels = batch['labels']
+                
                 # Move data to device
-                signals = batch['signal'].to(self.device)
-                labels = batch['labels'].to(self.device)
+                signals = signals.to(self.device)
+                labels = labels.to(self.device)
                 
                 # Forward pass
                 self.optimizer.zero_grad()
@@ -258,9 +267,18 @@ class Trainer:
         
         with torch.no_grad():
             for batch in self.val_loader:
+                # Handle different dataset formats (HDF5Dataset vs. regular Dataset)
+                if isinstance(batch, tuple):
+                    # HDF5Dataset returns (signal, label) tuple
+                    signals, labels = batch
+                else:
+                    # Regular dataset returns a dictionary
+                    signals = batch['signal']
+                    labels = batch['labels']
+                
                 # Move data to device
-                signals = batch['signal'].to(self.device)
-                labels = batch['labels'].to(self.device)
+                signals = signals.to(self.device)
+                labels = labels.to(self.device)
                 
                 # Forward pass
                 outputs = self.model(signals)

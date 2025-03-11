@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from segmentit.data.fast5_reader import Fast5Reader
 from segmentit.data.label_reader import LabelReader
 from segmentit.data.dataset import NanoporeSegmentationDataset
+from segmentit.data.hdf5_dataset import HDF5SegmentationDataset, create_train_val_dataloaders
 from segmentit.models.segmentation_model import SegmentationModel, EfficientUNet
 from segmentit.models.trainer import Trainer
 from segmentit.utils.metrics import plot_loss_curves, plot_metric_curves
@@ -126,6 +127,7 @@ def main():
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
     parser.add_argument('--gpu', type=int, default=0, help='GPU ID to use')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode with limited data')
+    parser.add_argument('--hdf5', type=str, help='Path to HDF5 dataset file (skips Fast5/TSV loading if provided)')
     args = parser.parse_args()
     
     # Set random seed
@@ -156,77 +158,116 @@ def main():
     
     # Load data
     logger.info("Loading data...")
-    fast5_dir = Path(config['data']['fast5_dir'])
-    tsv_path = Path(config['data']['tsv_path'])
     
-    fast5_reader = Fast5Reader(fast5_dir)
-    label_reader = LabelReader(tsv_path)
-    
-    # Create dataset
-    dataset = NanoporeSegmentationDataset(
-        fast5_reader=fast5_reader,
-        label_reader=label_reader,
-        chunk_size=config['data']['chunk_size'],
-        stride=config['data']['stride'],
-        max_workers=config['data']['max_workers'],
-        normalize=config['data']['normalize'],
-        filter_signal=config['data']['filter_signal'],
-        augment=config['data']['augment'],
-        cache_size=config['data']['cache_size'],
-    )
-    
-    # Split dataset
-    split_ratios = config['data']['train_val_test_split']
-    total_chunks = len(dataset)
-    train_size = int(split_ratios[0] * total_chunks)
-    val_size = int(split_ratios[1] * total_chunks)
-    test_size = total_chunks - train_size - val_size
-    
-    logger.info(f"Dataset split: {train_size} train, {val_size} validation, {test_size} test chunks")
-    
-    train_indices = list(range(0, train_size))
-    val_indices = list(range(train_size, train_size + val_size))
-    test_indices = list(range(train_size + val_size, total_chunks))
-    
-    # Limit data in debug mode
-    if args.debug:
-        train_indices = train_indices[:100]
-        val_indices = val_indices[:20]
-        test_indices = test_indices[:20]
-    
-    # Create subset samplers
-    from torch.utils.data import SubsetRandomSampler
-    train_sampler = SubsetRandomSampler(train_indices)
-    val_sampler = SubsetRandomSampler(val_indices)
-    test_sampler = SubsetRandomSampler(test_indices)
-    
-    # Create data loaders
-    train_loader = torch.utils.data.DataLoader(
-        dataset, 
-        batch_size=config['data']['batch_size'],
-        sampler=train_sampler,
-        num_workers=config['data']['num_workers'],
-        pin_memory=True,
-        prefetch_factor=2
-    )
-    
-    val_loader = torch.utils.data.DataLoader(
-        dataset, 
-        batch_size=config['data']['batch_size'],
-        sampler=val_sampler,
-        num_workers=config['data']['num_workers'],
-        pin_memory=True,
-        prefetch_factor=2
-    )
-    
-    test_loader = torch.utils.data.DataLoader(
-        dataset, 
-        batch_size=config['data']['batch_size'],
-        sampler=test_sampler,
-        num_workers=config['data']['num_workers'],
-        pin_memory=True,
-        prefetch_factor=2
-    )
+    if args.hdf5:
+        # Use HDF5 dataset if provided
+        logger.info(f"Using HDF5 dataset: {args.hdf5}")
+        
+        # Create train and validation dataloaders directly
+        train_loader, val_loader = create_train_val_dataloaders(
+            hdf5_path=args.hdf5,
+            batch_size=config['data']['batch_size'],
+            augment=config['data']['augment'],
+            augment_params=config.get('augment_params', {
+                'scale_prob': 0.3,
+                'noise_prob': 0.3,
+                'shift_prob': 0.3,
+            }),
+            val_split=config['data']['train_val_test_split'][1] / (config['data']['train_val_test_split'][0] + config['data']['train_val_test_split'][1]),
+            num_workers=config['data']['num_workers'],
+            seed=args.seed
+        )
+        
+        # Create a third dataloader for testing (using validation dataset)
+        test_dataset = HDF5SegmentationDataset(
+            hdf5_path=args.hdf5,
+            augment=False,
+            train=False,
+            val_split=config['data']['train_val_test_split'][1] / (config['data']['train_val_test_split'][0] + config['data']['train_val_test_split'][1]),
+            seed=args.seed
+        )
+        
+        test_loader = test_dataset.get_dataloader(
+            batch_size=config['data']['batch_size'],
+            shuffle=False,
+            num_workers=config['data']['num_workers']
+        )
+        
+        logger.info(f"Dataset loaded: {len(train_loader.dataset)} train, {len(val_loader.dataset)} validation samples")
+        
+    else:
+        # Use standard Fast5/TSV dataset
+        fast5_dir = Path(config['data']['fast5_dir'])
+        tsv_path = Path(config['data']['tsv_path'])
+        
+        fast5_reader = Fast5Reader(fast5_dir)
+        label_reader = LabelReader(tsv_path)
+        
+        # Create dataset
+        dataset = NanoporeSegmentationDataset(
+            fast5_reader=fast5_reader,
+            label_reader=label_reader,
+            chunk_size=config['data']['chunk_size'],
+            stride=config['data']['stride'],
+            max_workers=config['data']['max_workers'],
+            normalize=config['data']['normalize'],
+            filter_signal=config['data']['filter_signal'],
+            augment=config['data']['augment'],
+            cache_size=config['data']['cache_size'],
+        )
+        
+        # Split dataset
+        split_ratios = config['data']['train_val_test_split']
+        total_chunks = len(dataset)
+        train_size = int(split_ratios[0] * total_chunks)
+        val_size = int(split_ratios[1] * total_chunks)
+        test_size = total_chunks - train_size - val_size
+        
+        logger.info(f"Dataset split: {train_size} train, {val_size} validation, {test_size} test chunks")
+        
+        train_indices = list(range(0, train_size))
+        val_indices = list(range(train_size, train_size + val_size))
+        test_indices = list(range(train_size + val_size, total_chunks))
+        
+        # Limit data in debug mode
+        if args.debug:
+            train_indices = train_indices[:100]
+            val_indices = val_indices[:20]
+            test_indices = test_indices[:20]
+        
+        # Create subset samplers
+        from torch.utils.data import SubsetRandomSampler
+        train_sampler = SubsetRandomSampler(train_indices)
+        val_sampler = SubsetRandomSampler(val_indices)
+        test_sampler = SubsetRandomSampler(test_indices)
+        
+        # Create data loaders
+        train_loader = torch.utils.data.DataLoader(
+            dataset, 
+            batch_size=config['data']['batch_size'],
+            sampler=train_sampler,
+            num_workers=config['data']['num_workers'],
+            pin_memory=True,
+            prefetch_factor=2
+        )
+        
+        val_loader = torch.utils.data.DataLoader(
+            dataset, 
+            batch_size=config['data']['batch_size'],
+            sampler=val_sampler,
+            num_workers=config['data']['num_workers'],
+            pin_memory=True,
+            prefetch_factor=2
+        )
+        
+        test_loader = torch.utils.data.DataLoader(
+            dataset, 
+            batch_size=config['data']['batch_size'],
+            sampler=test_sampler,
+            num_workers=config['data']['num_workers'],
+            pin_memory=True,
+            prefetch_factor=2
+        )
     
     # Create model
     logger.info("Creating model...")
