@@ -27,6 +27,8 @@ def parse_arguments():
     parser.add_argument('--min_segments', type=int, default=1, help='Minimum segments in chunk to include')
     parser.add_argument('--compression', type=str, default='gzip', help='HDF5 compression type (gzip, lzf, or none)')
     parser.add_argument('--filter_window', type=int, default=5, help='Median filter window size')
+    parser.add_argument('--id_prefix', type=str, default='', help='Prefix to add to label read IDs (to match Fast5 read IDs)')
+    parser.add_argument('--debug_ids', action='store_true', help='Print sample read IDs for debugging')
     return parser.parse_args()
 
 def prepare_signal_chunk(signal_data, chunk_idx, chunk_size, chunk_stride, labels=None, filter_window=5):
@@ -102,8 +104,53 @@ def main():
     label_reader = LabelReader(args.labels_path)
     
     # Get all read IDs that have both signal and labels
-    read_ids = set(fast5_reader.read_id_map.keys()).intersection(label_reader.read_id_map.keys())
+    fast5_read_ids = set(fast5_reader._read_id_to_file.keys())
+    
+    # Get label read IDs and apply prefix if specified
+    if args.id_prefix:
+        logger.info(f"Adding prefix '{args.id_prefix}' to label read IDs")
+        # Create a new mapping with prefixed keys
+        prefixed_map = {}
+        for read_id, labels in label_reader.read_id_map.items():
+            prefixed_map[args.id_prefix + read_id] = labels
+        
+        # Replace the original map with the prefixed one
+        label_reader.read_id_map = prefixed_map
+    
+    label_read_ids = set(label_reader.read_id_map.keys())
+    
+    logger.info(f"Found {len(fast5_read_ids)} read IDs in Fast5 files")
+    logger.info(f"Found {len(label_read_ids)} read IDs in label file")
+    
+    # Print sample IDs if debug_ids is enabled
+    if args.debug_ids:
+        logger.info("Sample Fast5 read IDs (first 5):")
+        for read_id in list(fast5_read_ids)[:5]:
+            logger.info(f"  {read_id}")
+            
+        logger.info("Sample Label read IDs (first 5):")
+        for read_id in list(label_read_ids)[:5]:
+            logger.info(f"  {read_id}")
+    
+    # Find common read IDs
+    read_ids = fast5_read_ids.intersection(label_read_ids)
     logger.info(f"Found {len(read_ids)} reads with both signal and labels")
+    
+    if len(read_ids) == 0:
+        # Print some examples to help debug matching issues
+        logger.error("No matching read IDs found between Fast5 files and labels!")
+        
+        # Print sample read IDs from each source for debugging
+        logger.info("Sample Fast5 read IDs (first 5):")
+        for read_id in list(fast5_read_ids)[:5]:
+            logger.info(f"  {read_id}")
+            
+        logger.info("Sample Label read IDs (first 5):")
+        for read_id in list(label_read_ids)[:5]:
+            logger.info(f"  {read_id}")
+            
+        logger.info("Check if read IDs need to be normalized or transformed to match between sources")
+        raise ValueError("No matching read IDs found. Cannot continue.")
     
     # Create HDF5 file
     compression = args.compression if args.compression.lower() != 'none' else None

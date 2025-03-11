@@ -52,6 +52,8 @@ Key options include:
 - `--compression`: HDF5 compression type (gzip, lzf, or none, default: gzip)
 - `--max_workers`: Maximum number of worker threads (default: 8)
 - `--filter_window`: Median filter window size (default: 5)
+- `--id_prefix`: Prefix to add to label read IDs to match Fast5 read IDs (default: none)
+- `--debug_ids`: Print sample read IDs for debugging matching issues
 
 When training, you can use the preprocessed HDF5 dataset:
 ```bash

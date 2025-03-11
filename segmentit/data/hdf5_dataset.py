@@ -54,7 +54,17 @@ class HDF5SegmentationDataset(Dataset):
         self.chunk_stride = self.h5_file['metadata']['parameters'].attrs['chunk_stride']
         
         # Get all read IDs
-        all_read_ids = list(self.h5_file['signals'].keys())
+        all_read_ids = []
+        
+        # Check if read_ids are stored in metadata
+        if 'metadata' in self.h5_file and 'read_ids' in self.h5_file['metadata']:
+            # Read from metadata
+            read_ids_dataset = self.h5_file['metadata']['read_ids'][:]
+            all_read_ids = [r_id.decode('utf-8') if isinstance(r_id, bytes) else r_id 
+                           for r_id in read_ids_dataset]
+        else:
+            # Fallback to keys in signals group
+            all_read_ids = list(self.h5_file['signals'].keys())
         
         # Split into train and validation sets
         random.seed(seed)
@@ -69,6 +79,10 @@ class HDF5SegmentationDataset(Dataset):
         # Build index mapping
         self.index_map = []  # (read_id, chunk_idx) pairs
         for read_id in self.read_ids:
+            # Convert to string if it's bytes
+            if isinstance(read_id, bytes):
+                read_id = read_id.decode('utf-8')
+                
             if read_id in self.h5_file['signals']:
                 n_chunks = len(self.h5_file['signals'][read_id]['chunks'])
                 for i in range(n_chunks):
@@ -90,6 +104,10 @@ class HDF5SegmentationDataset(Dataset):
         if cache_key in self.cache:
             signal, label = self.cache[cache_key]
         else:
+            # Convert read_id to string if it's bytes
+            if isinstance(read_id, bytes):
+                read_id = read_id.decode('utf-8')
+                
             # Load from HDF5
             signal = self.h5_file['signals'][read_id]['chunks'][chunk_idx]
             label = self.h5_file['labels'][read_id]['labels'][chunk_idx]
