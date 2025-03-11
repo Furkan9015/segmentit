@@ -7,6 +7,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 from scripts.prepare_data import process_read, prepare_signal_chunk
+from segmentit.utils.signal_processing import normalize_signal, median_filter
 
 class TestDataPreparation:
     

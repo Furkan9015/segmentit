@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 from segmentit.data.fast5_reader import Fast5Reader
 from segmentit.data.label_reader import LabelReader
-from segmentit.utils.signal_processing import normalize_signal, median_filter_signal
+from segmentit.utils.signal_processing import normalize_signal, median_filter
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -26,9 +26,10 @@ def parse_arguments():
     parser.add_argument('--max_workers', type=int, default=8, help='Maximum number of worker threads')
     parser.add_argument('--min_segments', type=int, default=1, help='Minimum segments in chunk to include')
     parser.add_argument('--compression', type=str, default='gzip', help='HDF5 compression type (gzip, lzf, or none)')
+    parser.add_argument('--filter_window', type=int, default=5, help='Median filter window size')
     return parser.parse_args()
 
-def prepare_signal_chunk(signal_data, chunk_idx, chunk_size, chunk_stride, labels=None):
+def prepare_signal_chunk(signal_data, chunk_idx, chunk_size, chunk_stride, labels=None, filter_window=5):
     """Process a single chunk of signal data."""
     start_idx = chunk_idx * chunk_stride
     end_idx = start_idx + chunk_size
@@ -42,7 +43,7 @@ def prepare_signal_chunk(signal_data, chunk_idx, chunk_size, chunk_stride, label
     
     # Normalize and filter
     chunk = normalize_signal(chunk)
-    chunk = median_filter_signal(chunk)
+    chunk = median_filter(chunk, window_size=filter_window)
     
     # Create corresponding label if available
     if labels is not None:
@@ -61,7 +62,7 @@ def prepare_signal_chunk(signal_data, chunk_idx, chunk_size, chunk_stride, label
     
     return chunk
 
-def process_read(read_id, signal, labels, chunk_size, chunk_stride, min_segments):
+def process_read(read_id, signal, labels, chunk_size, chunk_stride, min_segments, filter_window=5):
     """Process a complete read and its chunks."""
     n_chunks = max(1, (len(signal) - chunk_size) // chunk_stride + 1)
     
@@ -79,7 +80,7 @@ def process_read(read_id, signal, labels, chunk_size, chunk_stride, min_segments
                               (end >= start_idx and end < end_idx))
         
         if segment_count >= min_segments:
-            chunk, label = prepare_signal_chunk(signal, i, chunk_size, chunk_stride, labels)
+            chunk, label = prepare_signal_chunk(signal, i, chunk_size, chunk_stride, labels, filter_window)
             valid_chunks.append(chunk)
             valid_labels.append(label)
             chunk_indices.append(i)
@@ -117,6 +118,7 @@ def main():
         params.attrs['chunk_size'] = args.chunk_size
         params.attrs['chunk_stride'] = args.chunk_stride
         params.attrs['min_segments'] = args.min_segments
+        params.attrs['filter_window'] = args.filter_window
         
         # Store read_ids
         metadata_group.create_dataset('read_ids', data=np.array(list(read_ids), dtype='S36'))
@@ -138,7 +140,8 @@ def main():
                         labels, 
                         args.chunk_size, 
                         args.chunk_stride,
-                        args.min_segments
+                        args.min_segments,
+                        args.filter_window
                     )
                 )
             

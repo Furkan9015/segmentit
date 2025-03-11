@@ -51,6 +51,7 @@ Key options include:
 - `--min_segments`: Minimum segments in a chunk to include (default: 1)
 - `--compression`: HDF5 compression type (gzip, lzf, or none, default: gzip)
 - `--max_workers`: Maximum number of worker threads (default: 8)
+- `--filter_window`: Median filter window size (default: 5)
 
 When training, you can use the preprocessed HDF5 dataset:
 ```bash
