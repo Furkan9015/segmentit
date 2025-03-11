@@ -36,7 +36,12 @@ The system expects:
 
 For efficient processing, you can preprocess data into HDF5 format:
 ```bash
-python scripts/prepare_data.py --fast5_dir data/raw/fast5 --labels_path data/raw/labels.tsv --output_path data/processed/dataset.h5
+python scripts/prepare_data.py --fast5_dir data/raw/fast5 --labels_path data/raw/labels.tsv --output_path data/processed/dataset.h5 --debug_ids
+```
+
+If your read IDs don't match between Fast5 files and label files, try using the `--id_prefix` option to add a prefix to label read IDs:
+```bash
+python scripts/prepare_data.py --fast5_dir data/raw/fast5 --labels_path data/raw/labels.tsv --output_path data/processed/dataset.h5 --id_prefix "channel_"
 ```
 
 This creates an optimized HDF5 file with preprocessed signal chunks and labels for faster training. The script offers several options:

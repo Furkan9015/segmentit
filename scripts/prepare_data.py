@@ -64,13 +64,42 @@ def prepare_signal_chunk(signal_data, chunk_idx, chunk_size, chunk_stride, label
     
     return chunk
 
-def process_read(read_id, signal, labels, chunk_size, chunk_stride, min_segments, filter_window=5):
+def process_read(read_id, signal, segment_df, chunk_size, chunk_stride, min_segments, filter_window=5):
     """Process a complete read and its chunks."""
     n_chunks = max(1, (len(signal) - chunk_size) // chunk_stride + 1)
     
     valid_chunks = []
     valid_labels = []
     chunk_indices = []
+    
+    # Convert DataFrame to list of (start, end) tuples for segments
+    if segment_df is not None and not segment_df.empty:
+        # Try to find the correct column names
+        start_col = None
+        end_col = None
+        
+        # Check common column name patterns
+        if 'start_raw_idx' in segment_df.columns and 'end_raw_idx' in segment_df.columns:
+            start_col = 'start_raw_idx'
+            end_col = 'end_raw_idx'
+        elif 'start' in segment_df.columns and 'end' in segment_df.columns:
+            start_col = 'start'
+            end_col = 'end'
+        elif 'start_idx' in segment_df.columns and 'end_idx' in segment_df.columns:
+            start_col = 'start_idx'
+            end_col = 'end_idx'
+        
+        if start_col is not None and end_col is not None:
+            labels = list(zip(segment_df[start_col].values, segment_df[end_col].values))
+        else:
+            # Log column names and use first two numeric columns as fallback
+            numeric_cols = segment_df.select_dtypes(include=['number']).columns.tolist()
+            if len(numeric_cols) >= 2:
+                labels = list(zip(segment_df[numeric_cols[0]].values, segment_df[numeric_cols[1]].values))
+            else:
+                labels = []
+    else:
+        labels = []
     
     for i in range(n_chunks):
         start_idx = i * chunk_stride
@@ -111,13 +140,13 @@ def main():
         logger.info(f"Adding prefix '{args.id_prefix}' to label read IDs")
         # Create a new mapping with prefixed keys
         prefixed_map = {}
-        for read_id, labels in label_reader.read_id_map.items():
+        for read_id, labels in label_reader._read_segments.items():
             prefixed_map[args.id_prefix + read_id] = labels
         
         # Replace the original map with the prefixed one
-        label_reader.read_id_map = prefixed_map
+        label_reader._read_segments = prefixed_map
     
-    label_read_ids = set(label_reader.read_id_map.keys())
+    label_read_ids = set(label_reader._read_segments.keys())
     
     logger.info(f"Found {len(fast5_read_ids)} read IDs in Fast5 files")
     logger.info(f"Found {len(label_read_ids)} read IDs in label file")
@@ -131,6 +160,14 @@ def main():
         logger.info("Sample Label read IDs (first 5):")
         for read_id in list(label_read_ids)[:5]:
             logger.info(f"  {read_id}")
+            
+        # Print segment DataFrame structure for one read ID if available
+        if label_read_ids:
+            sample_read_id = next(iter(label_read_ids))
+            sample_df = label_reader.get_segments_for_read(sample_read_id)
+            if sample_df is not None and not sample_df.empty:
+                logger.info(f"Sample segment DataFrame columns: {sample_df.columns.tolist()}")
+                logger.info(f"Sample segment DataFrame (first row): {sample_df.iloc[0].to_dict()}")
     
     # Find common read IDs
     read_ids = fast5_read_ids.intersection(label_read_ids)
@@ -177,14 +214,14 @@ def main():
             
             for read_id in read_ids:
                 signal = fast5_reader.get_signal(read_id)
-                labels = label_reader.get_labels(read_id)
+                segment_df = label_reader.get_segments_for_read(read_id)
                 
                 futures.append(
                     executor.submit(
                         process_read, 
                         read_id, 
                         signal, 
-                        labels, 
+                        segment_df, 
                         args.chunk_size, 
                         args.chunk_stride,
                         args.min_segments,
